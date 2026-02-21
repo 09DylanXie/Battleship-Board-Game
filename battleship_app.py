@@ -3,7 +3,7 @@ import random
 import uuid
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="Battleship Command v12", layout="wide", page_icon="⚓")
+st.set_page_config(page_title="Battleship Command v13", layout="wide", page_icon="⚓")
 
 # --- RULES & CONSTANTS ---
 STARTING_GOLD = 150
@@ -14,7 +14,7 @@ FLEET_CAP_ACTIVE = 7
 FLEET_CAP_RESERVE = 3
 BASE_MAX_HP = 30 
 
-# Unit Stats (Updated Costs)
+# Unit Stats
 UNITS = {
     "Aircraft Carrier": {"gold": 110, "steel": 8, "turns": 3, "hp": 7, "desc": "Range 4, 1x(1-10) or 2x(1-5)"}, 
     "Battleship":       {"gold": 90,  "steel": 7, "turns": 2, "hp": 13,"desc": "Range 3, Dmg 3-9"}, 
@@ -23,7 +23,7 @@ UNITS = {
     "Submarine":        {"gold": 30,  "steel": 2, "turns": 0, "hp": 3, "desc": "Torpedo (7 dmg), Hidden"}, 
 }
 
-# Detailed Building Stats (Added Steel Costs)
+# Detailed Building Stats 
 BUILDINGS = {
     "Gold Mine": {
         "gold": 20, "steel": 0, "limit": 4, 
@@ -65,11 +65,19 @@ if 'logs' not in st.session_state:
 if 'roll_results' not in st.session_state:
     st.session_state.roll_results = {}
 
-# Helper to create ship object with HP
+# --- NEW: Ship Counter System ---
+if 'ship_counters' not in st.session_state:
+    st.session_state.ship_counters = {k: 0 for k in UNITS.keys()}
+
+# Helper to create ship object with designated numbers
 def create_ship(u_type, status="Active"):
+    st.session_state.ship_counters[u_type] += 1
+    designation = f"{u_type} {st.session_state.ship_counters[u_type]}"
+    
     return {
         "id": str(uuid.uuid4()), 
         "type": u_type, 
+        "name": designation, # Display name (e.g., "Destroyer 1")
         "status": status,
         "hp": UNITS[u_type]["hp"],
         "max_hp": UNITS[u_type]["hp"]
@@ -77,8 +85,8 @@ def create_ship(u_type, status="Active"):
 
 if 'fleet_list' not in st.session_state:
     st.session_state.fleet_list = [
-        create_ship("Destroyer", "Active"),
-        create_ship("Destroyer", "Active")
+        create_ship("Destroyer", "Active"), # Will become Destroyer 1
+        create_ship("Destroyer", "Active")  # Will become Destroyer 2
     ]
 
 # --- FUNCTIONS ---
@@ -99,10 +107,10 @@ def end_turn():
     for item in st.session_state.queue:
         item['turns_left'] -= 1
         if item['turns_left'] <= 0:
-            completed.append(item['name'])
+            completed.append(item['type'])
             active_count = sum(1 for s in st.session_state.fleet_list if s['status'] == "Active")
             status = "Active" if active_count < FLEET_CAP_ACTIVE else "Reserve"
-            st.session_state.fleet_list.append(create_ship(item['name'], status))
+            st.session_state.fleet_list.append(create_ship(item['type'], status))
         else:
             new_queue.append(item)
     
@@ -128,18 +136,18 @@ def toggle_ship_status(ship_id):
     if ship['status'] == "Active":
         if reserve_count < FLEET_CAP_RESERVE:
             ship['status'] = "Reserve"
-            log(f"⚓ {ship['type']} moved to Reserve.")
+            log(f"⚓ {ship['name']} moved to Reserve.")
         else:
             st.error("Reserve Fleet Full!")
     elif ship['status'] == "Reserve":
         if active_count < FLEET_CAP_ACTIVE:
             ship['status'] = "Active"
-            log(f"⚔️ {ship['type']} deployed to Active.")
+            log(f"⚔️ {ship['name']} deployed to Active.")
         else:
             st.error("Active Fleet Full!")
 
 # --- MAIN UI ---
-st.title("⚓ Battleship Command v12")
+st.title("⚓ Battleship Command v13")
 
 # Dashboard
 col1, col2, col3, col4 = st.columns(4)
@@ -301,7 +309,7 @@ with tab_health:
                 
                 # Info
                 with hc1:
-                    st.markdown(f"**{ship['type']}**")
+                    st.markdown(f"**{ship['name']}**") # Display Name with Number
                     if ship['hp'] <= 0:
                         st.error("DESTROYED")
                     elif ship['hp'] <= ship['max_hp'] * 0.3:
@@ -344,7 +352,7 @@ with tab_ships:
         for ship in active_s:
             with st.container(border=True):
                 c1, c2, c3 = st.columns([2, 1, 1])
-                c1.markdown(f"**{ship['type']}** (HP: {ship['hp']})")
+                c1.markdown(f"**{ship['name']}** (HP: {ship['hp']})") # Display Name with Number
                 if c2.button("Recall", key=f"r_{ship['id']}"):
                     toggle_ship_status(ship['id'])
                     st.rerun()
@@ -356,7 +364,7 @@ with tab_ships:
         for ship in reserve_s:
             with st.container(border=True):
                 c1, c2, c3 = st.columns([2, 1, 1])
-                c1.markdown(f"**{ship['type']}** (HP: {ship['hp']})")
+                c1.markdown(f"**{ship['name']}** (HP: {ship['hp']})") # Display Name with Number
                 if c2.button("Deploy", key=f"d_{ship['id']}"):
                     toggle_ship_status(ship['id'])
                     st.rerun()
@@ -377,7 +385,7 @@ with tab_ships:
                 if s['turns'] == 0:
                     st.session_state.fleet_list.append(create_ship(u, "Active"))
                 else:
-                    st.session_state.queue.append({'name': u, 'turns_left': s['turns']})
+                    st.session_state.queue.append({'type': u, 'turns_left': s['turns']})
                 st.rerun()
             else:
                 st.error("Funds?")
@@ -385,7 +393,7 @@ with tab_ships:
         if st.session_state.queue:
             st.divider()
             for q in st.session_state.queue:
-                st.write(f"🏗️ {q['name']}: {q['turns_left']} turns")
+                st.write(f"🏗️ {q['type']}: {q['turns_left']} turns")
 
 # --- TAB 4: INFRASTRUCTURE ---
 with tab_infra:
@@ -416,7 +424,7 @@ with tab_infra:
                 st.write(f"**Owned:** {curr} / {limit}")
                 
             with ic3:
-                # Disable button if maxed or poor (Checking Steel now too)
+                # Disable button if maxed or poor
                 can_afford_g = st.session_state.gold >= b_data['gold']
                 can_afford_s = st.session_state.steel >= b_data['steel']
                 not_maxed = curr < limit
