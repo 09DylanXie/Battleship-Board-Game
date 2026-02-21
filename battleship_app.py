@@ -3,7 +3,7 @@ import random
 import uuid
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="Battleship Command v8", layout="wide", page_icon="⚓")
+st.set_page_config(page_title="Battleship Command v12", layout="wide", page_icon="⚓")
 
 # --- RULES & CONSTANTS ---
 STARTING_GOLD = 150
@@ -14,34 +14,34 @@ FLEET_CAP_ACTIVE = 7
 FLEET_CAP_RESERVE = 3
 BASE_MAX_HP = 30 
 
-# Unit Stats
+# Unit Stats (Updated Costs)
 UNITS = {
-    "Aircraft Carrier": {"gold": 100, "steel": 5, "turns": 3, "hp": 5, "desc": "Range 4, 1x(2-6) or 2x(1-3)"}, 
-    "Battleship":       {"gold": 80,  "steel": 7, "turns": 2, "hp": 12,"desc": "Range 3, Dmg 3-10"}, 
-    "Cruiser":          {"gold": 50,  "steel": 5, "turns": 1, "hp": 8, "desc": "Range 2, Dmg 2-6"}, 
-    "Destroyer":        {"gold": 30,  "steel": 3, "turns": 0, "hp": 5, "desc": "Range 2, Dmg 1-3 + Torp"}, 
-    "Submarine":        {"gold": 30,  "steel": 1, "turns": 0, "hp": 3, "desc": "Torpedo (5 dmg), Hidden"}, 
+    "Aircraft Carrier": {"gold": 110, "steel": 8, "turns": 3, "hp": 7, "desc": "Range 4, 1x(1-10) or 2x(1-5)"}, 
+    "Battleship":       {"gold": 90,  "steel": 7, "turns": 2, "hp": 13,"desc": "Range 3, Dmg 3-9"}, 
+    "Cruiser":          {"gold": 60,  "steel": 5, "turns": 1, "hp": 8, "desc": "Range 2, Dmg 2-5"}, 
+    "Destroyer":        {"gold": 40,  "steel": 4, "turns": 0, "hp": 5, "desc": "Range 2, Dmg 1-3 + Torp(5)"}, 
+    "Submarine":        {"gold": 30,  "steel": 2, "turns": 0, "hp": 3, "desc": "Torpedo (7 dmg), Hidden"}, 
 }
 
-# Detailed Building Stats
+# Detailed Building Stats (Added Steel Costs)
 BUILDINGS = {
     "Gold Mine": {
-        "gold": 20, "limit": 2, 
+        "gold": 20, "steel": 0, "limit": 4, 
         "effect": "+10 Gold/turn", 
         "desc": "Deep earth mining infrastructure to fund the war effort."
     },
     "Steel Factory": {
-        "gold": 40, "limit": 2, 
+        "gold": 40, "steel": 0, "limit": 2, 
         "effect": "+1 Steel/turn", 
         "desc": "Heavy industrial processing for ship armor and hulls."
     },
     "Base Defense": {
-        "gold": 50, "limit": 2, 
+        "gold": 50, "steel": 0, "limit": 2, 
         "effect": "+1 Bomber (1-3 Dmg)", 
         "desc": "Scramble interceptors to defend the homeland."
     },
     "Shipyard": {
-        "gold": 80, "limit": 1, 
+        "gold": 80, "steel": 3, "limit": 1, 
         "effect": "Unlocks Repairs", 
         "desc": "Allows repairing ships (3HP) within 1 tile of base."
     }
@@ -139,7 +139,7 @@ def toggle_ship_status(ship_id):
             st.error("Active Fleet Full!")
 
 # --- MAIN UI ---
-st.title("⚓ Battleship Command v8")
+st.title("⚓ Battleship Command v12")
 
 # Dashboard
 col1, col2, col3, col4 = st.columns(4)
@@ -160,25 +160,25 @@ tab_combat, tab_health, tab_ships, tab_infra = st.tabs(["⚔️ Combat", "🏥 D
 with tab_combat:
     # --- AIRCRAFT CARRIER ---
     st.markdown("### ✈️ Aircraft Carrier")
-    c_mode = st.radio("Carrier Mode", ["Focused (2-6 Dmg)", "Split (2x 1-3 Dmg)"], horizontal=True)
+    c_mode = st.radio("Carrier Mode", ["Focused (1-10 Dmg)", "Split (2x 1-5 Dmg)"], horizontal=True)
     c_col1, c_col2 = st.columns(2)
     
     if "Focused" in c_mode:
         with c_col1:
             if st.button("Launch Strike"):
-                dmg = random.randint(2, 6)
+                dmg = random.randint(1, 10)
                 st.session_state.roll_results['carrier'] = f"🎯 Carrier Hit: **{dmg}**"
                 log(f"Carrier Focused: {dmg}")
     else:
         with c_col1:
             if st.button("Sqd A"):
-                dmg = random.randint(1, 3)
+                dmg = random.randint(1, 5)
                 st.session_state.roll_results['carrier_a'] = f"🛩️ A: **{dmg}**"
                 log(f"Carrier A: {dmg}")
             if 'carrier_a' in st.session_state.roll_results: st.caption(st.session_state.roll_results['carrier_a'])
         with c_col2:
             if st.button("Sqd B"):
-                dmg = random.randint(1, 3)
+                dmg = random.randint(1, 5)
                 st.session_state.roll_results['carrier_b'] = f"🛩️ B: **{dmg}**"
                 log(f"Carrier B: {dmg}")
             if 'carrier_b' in st.session_state.roll_results: st.caption(st.session_state.roll_results['carrier_b'])
@@ -232,12 +232,12 @@ with tab_combat:
     col_surf1, col_surf2, col_surf3 = st.columns(3)
     with col_surf1:
         if st.button("🔥 Battleship"):
-            dmg = random.randint(3, 10)
+            dmg = random.randint(3, 9)
             st.session_state.roll_results['bb'] = f"💥 **{dmg}**"
             log(f"Battleship Fired: {dmg}")
     with col_surf2:
         if st.button("🔫 Cruiser"):
-            dmg = random.randint(2, 6)
+            dmg = random.randint(2, 5)
             st.session_state.roll_results['cr'] = f"🔫 **{dmg}**"
             log(f"Cruiser Fired: {dmg}")
     with col_surf3:
@@ -254,13 +254,13 @@ with tab_combat:
     st.markdown("### Torpedoes")
     t1, t2 = st.columns(2)
     with t1: 
-        if st.button("🚀 Dest. Torp (7)"): 
-            st.toast("7 Damage")
-            log("Destroyer Torpedo Fired")
-    with t2:
-        if st.button("🌊 Sub Torp (5)"): 
+        if st.button("🚀 Dest. Torp (5)"): 
             st.toast("5 Damage")
-            log("Submarine Torpedo Fired")
+            log("Destroyer Torpedo Fired (5 Dmg)")
+    with t2:
+        if st.button("🌊 Sub Torp (7)"): 
+            st.toast("7 Damage")
+            log("Submarine Torpedo Fired (7 Dmg)")
 
 
 # --- TAB 2: HEALTH TRACKER ---
@@ -314,9 +314,9 @@ with tab_health:
                     pct = max(0.0, ship['hp'] / ship['max_hp'])
                     st.progress(pct, text=f"{ship['hp']} / {ship['max_hp']} HP")
                 
-                # Controls
+                # Controls 
                 with hc3:
-                    sub1, sub2, sub3 = st.columns(3)
+                    sub1, sub2, sub3, sub4 = st.columns(4)
                     if sub1.button("-1", key=f"dmg_{ship['id']}"):
                         ship['hp'] = max(0, ship['hp'] - 1)
                         st.rerun()
@@ -325,6 +325,9 @@ with tab_health:
                         st.rerun()
                     if sub3.button("+1", key=f"rep_{ship['id']}"):
                         ship['hp'] = min(ship['max_hp'], ship['hp'] + 1)
+                        st.rerun()
+                    if sub4.button("☠️", key=f"kill_hp_{ship['id']}", help="Mark as Sunk"):
+                        delete_ship(ship['id'])
                         st.rerun()
 
 
@@ -340,19 +343,25 @@ with tab_ships:
         st.info(f"Active ({len(active_s)}/{FLEET_CAP_ACTIVE})")
         for ship in active_s:
             with st.container(border=True):
-                c1, c2 = st.columns([3, 1])
+                c1, c2, c3 = st.columns([2, 1, 1])
                 c1.markdown(f"**{ship['type']}** (HP: {ship['hp']})")
                 if c2.button("Recall", key=f"r_{ship['id']}"):
                     toggle_ship_status(ship['id'])
+                    st.rerun()
+                if c3.button("Sunk", key=f"k_{ship['id']}"):
+                    delete_ship(ship['id'])
                     st.rerun()
 
         st.warning(f"Reserve ({len(reserve_s)}/{FLEET_CAP_RESERVE})")
         for ship in reserve_s:
             with st.container(border=True):
-                c1, c2 = st.columns([3, 1])
+                c1, c2, c3 = st.columns([2, 1, 1])
                 c1.markdown(f"**{ship['type']}** (HP: {ship['hp']})")
                 if c2.button("Deploy", key=f"d_{ship['id']}"):
                     toggle_ship_status(ship['id'])
+                    st.rerun()
+                if c3.button("Scrap", key=f"sc_{ship['id']}"):
+                    delete_ship(ship['id'])
                     st.rerun()
 
     with col_yard:
@@ -397,16 +406,24 @@ with tab_infra:
             
             with ic2:
                 st.write(f"**Effect:** {b_data['effect']}")
-                st.write(f"**Cost:** {b_data['gold']} Gold")
+                
+                # FORMATTED COST STRING FOR STEEL
+                cost_str = f"{b_data['gold']}G"
+                if b_data['steel'] > 0:
+                    cost_str += f" | {b_data['steel']}S"
+                st.write(f"**Cost:** {cost_str}")
+                
                 st.write(f"**Owned:** {curr} / {limit}")
                 
             with ic3:
-                # Disable button if maxed or poor
-                can_afford = st.session_state.gold >= b_data['gold']
+                # Disable button if maxed or poor (Checking Steel now too)
+                can_afford_g = st.session_state.gold >= b_data['gold']
+                can_afford_s = st.session_state.steel >= b_data['steel']
                 not_maxed = curr < limit
                 
-                if st.button(f"Buy", key=f"buy_{b_name}", disabled=not (can_afford and not_maxed)):
+                if st.button(f"Buy", key=f"buy_{b_name}", disabled=not (can_afford_g and can_afford_s and not_maxed)):
                     st.session_state.gold -= b_data['gold']
+                    st.session_state.steel -= b_data['steel']
                     st.session_state.buildings[b_name] += 1
                     log(f"Constructed {b_name}")
                     st.rerun()
