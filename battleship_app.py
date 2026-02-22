@@ -3,7 +3,7 @@ import random
 import uuid
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="Battleship Command v17", layout="wide", page_icon="⚓")
+st.set_page_config(page_title="Battleship Command v18", layout="wide", page_icon="⚓")
 
 # --- RULES & CONSTANTS ---
 STARTING_GOLD = 150
@@ -15,13 +15,14 @@ FLEET_CAP_ACTIVE = 7
 FLEET_CAP_RESERVE = 3
 BASE_MAX_HP = 30 
 
-# Unit Stats (Updated Costs, HP, and Damage profiles)
+# Unit Stats (Added Decoy)
 UNITS = {
     "Aircraft Carrier": {"gold": 110, "steel": 8, "turns": 3, "hp": 7,  "limit": 2, "desc": "Range 4, 1x(3-10) or 2x(1-5)"}, 
     "Battleship":       {"gold": 90,  "steel": 7, "turns": 2, "hp": 13, "limit": 3, "desc": "Range 3, Dmg 2-7"}, 
     "Cruiser":          {"gold": 60,  "steel": 5, "turns": 1, "hp": 9,  "limit": 4, "desc": "Range 2, Dmg 2-4"}, 
     "Destroyer":        {"gold": 40,  "steel": 4, "turns": 0, "hp": 5,  "limit": 5, "desc": "Range 2, Dmg 1-3, Torp(5), Mine Gems"}, 
     "Submarine":        {"gold": 30,  "steel": 2, "turns": 0, "hp": 3,  "limit": 2, "desc": "Torpedo (7 dmg), Hidden"}, 
+    "Decoy":            {"gold": 20,  "steel": 0, "turns": 0, "hp": 1,  "limit": 1, "desc": "Fake ship. Destroyed upon reveal."}, 
 }
 
 BUILDINGS = {
@@ -31,7 +32,7 @@ BUILDINGS = {
         "desc": "Deep earth mining infrastructure to fund the war effort."
     },
     "Steel Factory": {
-        "gold": 40, "steel": 1, "limit": 2, 
+        "gold": 40, "steel": 1, "limit": 3,  # Increased limit from 2 to 3
         "effect": "+1 Steel/turn", 
         "desc": "Heavy industrial processing for ship armor and hulls."
     },
@@ -71,11 +72,14 @@ def get_next_ship_number(fleet_list, u_type, limit):
 
 def create_player_ship(u_type, status="Active"):
     num = get_next_ship_number(st.session_state.fleet_list, u_type, UNITS[u_type]["limit"])
+    # Don't add a number for the decoy since there's only ever 1
+    name_display = f"{u_type} {num}" if u_type != "Decoy" else u_type
+    
     return {
         "id": str(uuid.uuid4()), 
         "type": u_type, 
         "num": num,
-        "name": f"{u_type} {num}",
+        "name": name_display,
         "status": status,
         "hp": UNITS[u_type]["hp"],
         "max_hp": UNITS[u_type]["hp"],
@@ -84,7 +88,6 @@ def create_player_ship(u_type, status="Active"):
 
 if 'fleet_list' not in st.session_state:
     st.session_state.fleet_list = []
-    # Start with 1 Destroyer only
     st.session_state.fleet_list.append(create_player_ship("Destroyer", "Active"))
 
 # Enemy State Initialization
@@ -122,7 +125,8 @@ def end_turn():
     
     # Reset Destroyer mining status
     for ship in st.session_state.fleet_list:
-        ship['mined_this_turn'] = False
+        if ship['type'] == 'Destroyer':
+            ship['mined_this_turn'] = False
     
     log(f"Collected +{gold_gain} Gold, +{steel_gain} Steel.")
     if completed:
@@ -155,7 +159,7 @@ def toggle_ship_status(ship_id):
             st.error("Active Fleet Full!")
 
 # --- MAIN UI ---
-st.title("⚓ Battleship Command v17")
+st.title("⚓ Battleship Command v18")
 
 # Dashboard
 col1, col2, col3, col4, col5 = st.columns(5)
@@ -335,9 +339,7 @@ with tab_health:
                 hc1, hc2, hc3 = st.columns([2, 3, 2])
                 with hc1:
                     st.markdown(f"**{ship['name']}**")
-                    # Added description under the name
                     st.caption(UNITS[ship['type']]['desc'])
-                    
                     if ship['hp'] <= 0: st.error("DESTROYED")
                     elif ship['hp'] <= ship['max_hp'] * 0.3: st.warning("CRITICAL")
                     else: st.success("OPERATIONAL")
@@ -482,11 +484,13 @@ with tab_enemy:
                 
                 if st.button("Spawn", key=f"spawn_{e_name}", disabled=(curr_e_ships >= e_limit)):
                     num = get_next_ship_number(enemy_data['ships'], e_unit, e_limit)
+                    name_display = f"{e_unit} {num}" if e_unit != "Decoy" else e_unit
+                    
                     enemy_data['ships'].append({
                         "id": str(uuid.uuid4()),
                         "type": e_unit,
                         "num": num,
-                        "name": f"{e_unit} {num}",
+                        "name": name_display,
                         "hp": UNITS[e_unit]['hp'],
                         "max_hp": UNITS[e_unit]['hp']
                     })
