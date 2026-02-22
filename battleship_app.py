@@ -1,9 +1,10 @@
 import streamlit as st
 import random
 import uuid
+import copy
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="Battleship Command v21", layout="wide", page_icon="⚓")
+st.set_page_config(page_title="Battleship Command v22", layout="wide", page_icon="⚓")
 
 # --- RULES & CONSTANTS ---
 STARTING_GOLD = 150
@@ -15,7 +16,7 @@ FLEET_CAP_ACTIVE = 7
 FLEET_CAP_RESERVE = 3
 BASE_MAX_HP = 30 
 
-# Unit Stats (Updated Costs to v21)
+# Unit Stats
 UNITS = {
     "Aircraft Carrier": {
         "gold": 100, "steel": 10, "turns": 3, "hp": 7, "limit": 2, 
@@ -49,7 +50,6 @@ UNITS = {
     }, 
 }
 
-# Detailed Building Stats (Updated Costs to v21)
 BUILDINGS = {
     "Gold Mine": {
         "gold": 20, "steel": 2, "limit": 4, 
@@ -86,6 +86,44 @@ if 'logs' not in st.session_state:
     st.session_state.logs = ["Game Started. Good luck, Commander."]
 if 'roll_results' not in st.session_state:
     st.session_state.roll_results = {}
+if 'history' not in st.session_state:
+    st.session_state.history = []
+
+# --- UNDO SYSTEM HELPER ---
+def save_state():
+    """Saves a snapshot of the current state before an action is taken."""
+    snapshot = {
+        'gold': st.session_state.gold,
+        'steel': st.session_state.steel,
+        'gems': st.session_state.gems,
+        'turn': st.session_state.turn,
+        'base_hp': st.session_state.base_hp,
+        'queue': copy.deepcopy(st.session_state.queue),
+        'buildings': copy.deepcopy(st.session_state.buildings),
+        'fleet_list': copy.deepcopy(st.session_state.fleet_list),
+        'enemies': copy.deepcopy(st.session_state.enemies)
+    }
+    st.session_state.history.append(snapshot)
+    if len(st.session_state.history) > 15:  # Keep max 15 previous states
+        st.session_state.history.pop(0)
+
+def undo():
+    """Restores the last saved state snapshot."""
+    if len(st.session_state.history) > 0:
+        last_state = st.session_state.history.pop()
+        st.session_state.gold = last_state['gold']
+        st.session_state.steel = last_state['steel']
+        st.session_state.gems = last_state['gems']
+        st.session_state.turn = last_state['turn']
+        st.session_state.base_hp = last_state['base_hp']
+        st.session_state.queue = last_state['queue']
+        st.session_state.buildings = last_state['buildings']
+        st.session_state.fleet_list = last_state['fleet_list']
+        st.session_state.enemies = last_state['enemies']
+        st.toast("↩️ Action Undone!")
+    else:
+        st.toast("❌ Nothing to undo!")
+
 
 # --- DYNAMIC NUMBERING HELPER ---
 def get_next_ship_number(fleet_list, u_type, limit):
@@ -127,6 +165,7 @@ def log(msg):
     st.session_state.logs.insert(0, f"Turn {st.session_state.turn}: {msg}")
 
 def end_turn():
+    save_state()
     gold_gain = BASE_GOLD_INCOME + (st.session_state.buildings["Gold Mine"] * 10)
     steel_gain = BASE_STEEL_INCOME + (st.session_state.buildings["Steel Factory"] * 1)
     
@@ -158,10 +197,12 @@ def end_turn():
     st.session_state.turn += 1
 
 def delete_ship(ship_id):
+    save_state()
     st.session_state.fleet_list = [s for s in st.session_state.fleet_list if s['id'] != ship_id]
     log("Ship sunk/scrapped.")
 
 def toggle_ship_status(ship_id):
+    save_state()
     ship = next((s for s in st.session_state.fleet_list if s['id'] == ship_id), None)
     if not ship: return
 
@@ -182,7 +223,7 @@ def toggle_ship_status(ship_id):
             st.error("Active Fleet Full!")
 
 # --- MAIN UI ---
-st.title("⚓ Battleship Command v21")
+st.title("⚓ Battleship Command v22")
 
 # Dashboard
 col1, col2, col3, col4, col5 = st.columns(5)
@@ -221,6 +262,7 @@ with tab_combat:
     with m_col1:
         st.write(f"**Available Destroyers to Mine:** {len(available_miners)}")
         if st.button("⛏️ Mine Mountain (Uses 1 Destroyer)", disabled=len(available_miners) == 0):
+            save_state()
             available_miners[0]['mined_this_turn'] = True
             st.session_state.gems += 1
             log(f"{available_miners[0]['name']} extracted 1 Gem from the mountains.")
@@ -345,12 +387,15 @@ with tab_health:
         st.progress(st.session_state.base_hp / BASE_MAX_HP)
         hb1, hb2, hb3 = st.columns(3)
         if hb1.button("➖ Hit (-1)", key="b_minus"): 
+            save_state()
             st.session_state.base_hp = max(0, st.session_state.base_hp - 1)
             st.rerun()
         if hb2.button("💥 Crit (-5)", key="b_crit"): 
+            save_state()
             st.session_state.base_hp = max(0, st.session_state.base_hp - 5)
             st.rerun()
         if hb3.button("➕ Repair (+1)", key="b_plus"):
+            save_state()
             st.session_state.base_hp = min(BASE_MAX_HP, st.session_state.base_hp + 1)
             st.rerun()
 
@@ -379,15 +424,19 @@ with tab_health:
                 with hc3:
                     sub1, sub2, sub3, sub4 = st.columns(4)
                     if sub1.button("-1", key=f"dmg_{ship['id']}"):
+                        save_state()
                         ship['hp'] = max(0, ship['hp'] - 1)
                         st.rerun()
                     if sub2.button("-3", key=f"crit_{ship['id']}"):
+                        save_state()
                         ship['hp'] = max(0, ship['hp'] - 3)
                         st.rerun()
                     if sub3.button("+1", key=f"rep_{ship['id']}"):
+                        save_state()
                         ship['hp'] = min(ship['max_hp'], ship['hp'] + 1)
                         st.rerun()
                     if sub4.button("☠️", key=f"kill_hp_{ship['id']}", help="Mark as Sunk"):
+                        # delete_ship handles save_state internally
                         delete_ship(ship['id'])
                         st.rerun()
 
@@ -457,6 +506,7 @@ with tab_ships:
         
         if st.button(f"Commission {u}", type="primary", disabled=is_maxed):
             if can_afford_g and can_afford_s and can_afford_gems:
+                save_state()
                 st.session_state.gold -= s['gold']
                 st.session_state.steel -= s['steel']
                 st.session_state.gems -= (rush_turns * 2)
@@ -495,30 +545,37 @@ with tab_enemy:
             with e_bh2:
                 eh1, eh2 = st.columns(2)
                 if eh1.button("-1", key=f"e_bm_{e_name}"):
+                    save_state()
                     enemy_data['base_hp'] = max(0, enemy_data['base_hp'] - 1)
                     st.rerun()
                 if eh2.button("+1", key=f"e_bp_{e_name}"):
+                    save_state()
                     enemy_data['base_hp'] = min(BASE_MAX_HP, enemy_data['base_hp'] + 1)
                     st.rerun()
             
             st.divider()
             
             st.markdown("#### Add Spotted Ship")
-            esp1, esp2 = st.columns([2, 1])
+            esp1, esp2, esp3 = st.columns([2, 1, 1])
             with esp1:
                 e_unit = st.selectbox("Ship Type", list(UNITS.keys()), key=f"sel_{e_name}", label_visibility="collapsed")
+            
+            e_limit = UNITS[e_unit]['limit']
+            curr_e_ships = len([s for s in enemy_data['ships'] if s['type'] == e_unit])
+            
             with esp2:
-                e_limit = UNITS[e_unit]['limit']
-                curr_e_ships = len([s for s in enemy_data['ships'] if s['type'] == e_unit])
+                default_num = get_next_ship_number(enemy_data['ships'], e_unit, e_limit)
+                e_num = st.number_input("ID", min_value=1, max_value=20, value=default_num, key=f"num_{e_name}", label_visibility="collapsed")
                 
+            with esp3:
                 if st.button("Spawn", key=f"spawn_{e_name}", disabled=(curr_e_ships >= e_limit)):
-                    num = get_next_ship_number(enemy_data['ships'], e_unit, e_limit)
-                    name_display = f"{e_unit} {num}" if e_unit != "Decoy" else e_unit
+                    save_state()
+                    name_display = f"{e_unit} {e_num}" if e_unit != "Decoy" else e_unit
                     
                     enemy_data['ships'].append({
                         "id": str(uuid.uuid4()),
                         "type": e_unit,
-                        "num": num,
+                        "num": e_num,
                         "name": name_display,
                         "hp": UNITS[e_unit]['hp'],
                         "max_hp": UNITS[e_unit]['hp']
@@ -530,7 +587,7 @@ with tab_enemy:
             else:
                 for ship in enemy_data['ships']:
                     with st.container(border=True):
-                        ec1, ec2, ec3 = st.columns([2, 3, 2])
+                        ec1, ec2, ec3 = st.columns([2, 3, 3])
                         with ec1:
                             st.markdown(f"**{ship['name']}**")
                             st.caption(UNITS[ship['type']]['desc'])
@@ -539,18 +596,31 @@ with tab_enemy:
                             pct = max(0.0, ship['hp'] / ship['max_hp'])
                             st.progress(pct, text=f"{ship['hp']} / {ship['max_hp']} HP")
                         with ec3:
-                            es1, es2, es3 = st.columns(3)
+                            es1, es2, es3, es4 = st.columns(4)
                             if es1.button("-1", key=f"e_dmg_{ship['id']}"):
+                                save_state()
                                 ship['hp'] = max(0, ship['hp'] - 1)
                                 st.rerun()
                             if es2.button("+1", key=f"e_rep_{ship['id']}"):
+                                save_state()
                                 ship['hp'] = min(ship['max_hp'], ship['hp'] + 1)
                                 st.rerun()
-                            if es3.button("☠️", key=f"e_kill_{ship['id']}"):
+                            
+                            # Reward Kill (You sank it)
+                            if es3.button("💎☠️", key=f"e_kill_{ship['id']}", help="You sank it! (+1 Gem)"):
+                                save_state()
                                 enemy_data['ships'] = [s for s in enemy_data['ships'] if s['id'] != ship['id']]
-                                st.session_state.gold += 20
-                                st.toast(f"Destroyed {ship['name']}! +20 Gold")
-                                log(f"Sunk enemy {ship['name']}. +20 Gold awarded.")
+                                st.session_state.gems += 1
+                                st.toast(f"Destroyed {ship['name']}! +1 Gem")
+                                log(f"Sunk enemy {ship['name']}. +1 Gem awarded.")
+                                st.rerun()
+                                
+                            # No Reward Kill (Someone else sank it)
+                            if es4.button("🗑️", key=f"e_rem_{ship['id']}", help="Sunk by another player (No reward)"):
+                                save_state()
+                                enemy_data['ships'] = [s for s in enemy_data['ships'] if s['id'] != ship['id']]
+                                st.toast(f"Removed {ship['name']}")
+                                log(f"Enemy {ship['name']} was sunk by another player.")
                                 st.rerun()
 
 
@@ -568,6 +638,7 @@ with tab_shop:
             st.write("**Cost:** 1 Gem")
             st.write("**Receive:** 30 Gold")
             if st.button("Trade for Gold", use_container_width=True, disabled=st.session_state.gems < 1):
+                save_state()
                 st.session_state.gems -= 1
                 st.session_state.gold += 30
                 log("Traded 1 Gem for 30 Gold.")
@@ -579,6 +650,7 @@ with tab_shop:
             st.write("**Cost:** 1 Gem")
             st.write("**Receive:** 3 Steel")
             if st.button("Trade for Steel", use_container_width=True, disabled=st.session_state.gems < 1):
+                save_state()
                 st.session_state.gems -= 1
                 st.session_state.steel += 3
                 log("Traded 1 Gem for 3 Steel.")
@@ -609,6 +681,7 @@ with tab_infra:
                 can_afford_s = st.session_state.steel >= b_data['steel']
                 not_maxed = curr < limit
                 if st.button(f"Buy", key=f"buy_{b_name}", disabled=not (can_afford_g and can_afford_s and not_maxed)):
+                    save_state()
                     st.session_state.gold -= b_data['gold']
                     st.session_state.steel -= b_data['steel']
                     st.session_state.buildings[b_name] += 1
@@ -628,15 +701,22 @@ with tab_infra:
 with st.sidebar:
     st.header("System")
     
-    if not st.session_state.get('confirm_reset', False):
-        if st.button("RESET GAME", type="primary"):
-            st.session_state.confirm_reset = True
+    col_u, col_r = st.columns(2)
+    
+    with col_u:
+        if st.button("↩️ UNDO"):
+            undo()
             st.rerun()
-    else:
-        st.error("Wipe all data and restart?")
-        if st.button("Confirm Reset"):
-            st.session_state.clear()
-            st.rerun()
-        if st.button("Cancel"):
-            st.session_state.confirm_reset = False
-            st.rerun()
+            
+    with col_r:
+        if not st.session_state.get('confirm_reset', False):
+            if st.button("RESET", type="primary"):
+                st.session_state.confirm_reset = True
+                st.rerun()
+        else:
+            if st.button("Confirm Reset", type="primary"):
+                st.session_state.clear()
+                st.rerun()
+            if st.button("Cancel"):
+                st.session_state.confirm_reset = False
+                st.rerun()
