@@ -3,7 +3,7 @@ import random
 import uuid
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="Battleship Command v18", layout="wide", page_icon="⚓")
+st.set_page_config(page_title="Battleship Command v20", layout="wide", page_icon="⚓")
 
 # --- RULES & CONSTANTS ---
 STARTING_GOLD = 150
@@ -15,14 +15,38 @@ FLEET_CAP_ACTIVE = 7
 FLEET_CAP_RESERVE = 3
 BASE_MAX_HP = 30 
 
-# Unit Stats (Added Decoy)
+# Unit Stats (Added 'bonus' field for special abilities)
 UNITS = {
-    "Aircraft Carrier": {"gold": 110, "steel": 8, "turns": 3, "hp": 7,  "limit": 2, "desc": "Range 4, 1x(3-10) or 2x(1-5)"}, 
-    "Battleship":       {"gold": 90,  "steel": 7, "turns": 2, "hp": 13, "limit": 3, "desc": "Range 3, Dmg 2-7"}, 
-    "Cruiser":          {"gold": 60,  "steel": 5, "turns": 1, "hp": 9,  "limit": 4, "desc": "Range 2, Dmg 2-4"}, 
-    "Destroyer":        {"gold": 40,  "steel": 4, "turns": 0, "hp": 5,  "limit": 5, "desc": "Range 2, Dmg 1-3, Torp(5), Mine Gems"}, 
-    "Submarine":        {"gold": 30,  "steel": 2, "turns": 0, "hp": 3,  "limit": 2, "desc": "Torpedo (7 dmg), Hidden"}, 
-    "Decoy":            {"gold": 20,  "steel": 0, "turns": 0, "hp": 1,  "limit": 1, "desc": "Fake ship. Destroyed upon reveal."}, 
+    "Aircraft Carrier": {
+        "gold": 110, "steel": 8, "turns": 3, "hp": 7, "limit": 2, 
+        "desc": "Range 4, 1x(3-10) or 2x(1-5)", 
+        "bonus": "Cannot Move and Attack on the same turn"
+    }, 
+    "Battleship": {
+        "gold": 90,  "steel": 7, "turns": 2, "hp": 13, "limit": 3, 
+        "desc": "Range 3, Dmg 2-7", 
+        "bonus": "Damage Reduction: Torpedoes (3) and Aircraft (1)"
+    }, 
+    "Cruiser": {
+        "gold": 60,  "steel": 5, "turns": 1, "hp": 9,  "limit": 4, 
+        "desc": "Range 2, Dmg 2-4", 
+        "bonus": "Damage Reduction: Submarines (5)"
+    }, 
+    "Destroyer": {
+        "gold": 40,  "steel": 4, "turns": 0, "hp": 5,  "limit": 5, 
+        "desc": "Range 2, Dmg 1-3, Torp(5), Mine Gems", 
+        "bonus": "Damage Reduction: Aircraft (2)"
+    }, 
+    "Submarine": {
+        "gold": 30,  "steel": 2, "turns": 0, "hp": 3,  "limit": 2, 
+        "desc": "Torpedo (7 dmg), Hidden", 
+        "bonus": "Immune to Battleships. Cannot attack bases. Invisible until 1 tile away."
+    }, 
+    "Decoy": {
+        "gold": 20,  "steel": 0, "turns": 0, "hp": 1,  "limit": 1, 
+        "desc": "Fake ship placement.", 
+        "bonus": "Destroyed immediately upon reveal."
+    }, 
 }
 
 BUILDINGS = {
@@ -32,7 +56,7 @@ BUILDINGS = {
         "desc": "Deep earth mining infrastructure to fund the war effort."
     },
     "Steel Factory": {
-        "gold": 40, "steel": 1, "limit": 3,  # Increased limit from 2 to 3
+        "gold": 40, "steel": 1, "limit": 3, 
         "effect": "+1 Steel/turn", 
         "desc": "Heavy industrial processing for ship armor and hulls."
     },
@@ -72,7 +96,6 @@ def get_next_ship_number(fleet_list, u_type, limit):
 
 def create_player_ship(u_type, status="Active"):
     num = get_next_ship_number(st.session_state.fleet_list, u_type, UNITS[u_type]["limit"])
-    # Don't add a number for the decoy since there's only ever 1
     name_display = f"{u_type} {num}" if u_type != "Decoy" else u_type
     
     return {
@@ -123,7 +146,6 @@ def end_turn():
     
     st.session_state.queue = new_queue
     
-    # Reset Destroyer mining status
     for ship in st.session_state.fleet_list:
         if ship['type'] == 'Destroyer':
             ship['mined_this_turn'] = False
@@ -159,7 +181,7 @@ def toggle_ship_status(ship_id):
             st.error("Active Fleet Full!")
 
 # --- MAIN UI ---
-st.title("⚓ Battleship Command v18")
+st.title("⚓ Battleship Command v20")
 
 # Dashboard
 col1, col2, col3, col4, col5 = st.columns(5)
@@ -168,9 +190,19 @@ col2.metric("Steel", st.session_state.steel)
 col3.metric("Gems", st.session_state.gems)
 col4.metric("Turn", st.session_state.turn)
 with col5:
-    if st.button("End Turn ➡️", type="primary", use_container_width=True):
-        end_turn()
-        st.rerun()
+    if not st.session_state.get('confirm_end_turn', False):
+        if st.button("End Turn ➡️", type="primary", use_container_width=True):
+            st.session_state.confirm_end_turn = True
+            st.rerun()
+    else:
+        st.write("Are you sure?")
+        if st.button("✅ Confirm", type="primary", use_container_width=True):
+            end_turn()
+            st.session_state.confirm_end_turn = False
+            st.rerun()
+        if st.button("❌ Cancel", use_container_width=True):
+            st.session_state.confirm_end_turn = False
+            st.rerun()
 
 st.divider()
 
@@ -181,9 +213,7 @@ tab_combat, tab_health, tab_ships, tab_enemy, tab_shop, tab_infra = st.tabs([
 
 # --- TAB 1: COMBAT ---
 with tab_combat:
-    # --- MOUNTAIN MINING ---
     st.markdown("### ⛰️ Mountain Operations")
-    
     available_miners = [s for s in st.session_state.fleet_list if s['type'] == 'Destroyer' and s['status'] == 'Active' and not s.get('mined_this_turn', False)]
     
     m_col1, m_col2 = st.columns([1, 2])
@@ -200,7 +230,6 @@ with tab_combat:
 
     st.divider()
 
-    # --- AIRCRAFT CARRIER ---
     st.markdown("### ✈️ Aircraft Carrier")
     c_mode = st.radio("Carrier Mode", ["Focused (3-10 Dmg)", "Split (2x 1-5 Dmg)"], horizontal=True)
     c_col1, c_col2 = st.columns(2)
@@ -230,7 +259,6 @@ with tab_combat:
 
     st.divider()
 
-    # --- BASE DEFENSE ---
     st.markdown("### 🏯 Base Defense")
     bombers = st.session_state.buildings["Base Defense"]
     
@@ -269,7 +297,6 @@ with tab_combat:
 
     st.divider()
     
-    # --- HEAVY & LIGHT ---
     st.markdown("### Surface Fleet")
     col_surf1, col_surf2, col_surf3 = st.columns(3)
     with col_surf1:
@@ -340,6 +367,9 @@ with tab_health:
                 with hc1:
                     st.markdown(f"**{ship['name']}**")
                     st.caption(UNITS[ship['type']]['desc'])
+                    # --- ADDED BONUS DESCRIPTION ---
+                    st.markdown(f"*{UNITS[ship['type']]['bonus']}*") 
+                    
                     if ship['hp'] <= 0: st.error("DESTROYED")
                     elif ship['hp'] <= ship['max_hp'] * 0.3: st.warning("CRITICAL")
                     else: st.success("OPERATIONAL")
@@ -408,7 +438,6 @@ with tab_ships:
         st.caption(f"Cost: {s['gold']}G {s['steel']}S | {s['turns']} Turns")
         st.write(f"**Owned/Queued:** {total_u} / {limit_u}")
         
-        # --- GEM RUSHING LOGIC ---
         rush_turns = 0
         if s['turns'] > 0:
             max_possible_rush = min(st.session_state.gems // 2, s['turns'])
@@ -505,6 +534,8 @@ with tab_enemy:
                         with ec1:
                             st.markdown(f"**{ship['name']}**")
                             st.caption(UNITS[ship['type']]['desc'])
+                            # --- ADDED BONUS DESCRIPTION FOR ENEMIES TOO ---
+                            st.markdown(f"*{UNITS[ship['type']]['bonus']}*") 
                         with ec2:
                             pct = max(0.0, ship['hp'] / ship['max_hp'])
                             st.progress(pct, text=f"{ship['hp']} / {ship['max_hp']} HP")
@@ -518,6 +549,9 @@ with tab_enemy:
                                 st.rerun()
                             if es3.button("☠️", key=f"e_kill_{ship['id']}"):
                                 enemy_data['ships'] = [s for s in enemy_data['ships'] if s['id'] != ship['id']]
+                                st.session_state.gold += 20
+                                st.toast(f"Destroyed {ship['name']}! +20 Gold")
+                                log(f"Sunk enemy {ship['name']}. +20 Gold awarded.")
                                 st.rerun()
 
 
@@ -593,11 +627,17 @@ with tab_infra:
 
 # --- SIDEBAR ---
 with st.sidebar:
-    st.header("Actions")
-    if st.button("💥 Enemy Destroyed (+20g)"):
-        st.session_state.gold += 20
-        st.rerun()
-    st.divider()
-    if st.button("RESET GAME", type="primary"):
-        st.session_state.clear()
-        st.rerun()
+    st.header("System")
+    
+    if not st.session_state.get('confirm_reset', False):
+        if st.button("RESET GAME", type="primary"):
+            st.session_state.confirm_reset = True
+            st.rerun()
+    else:
+        st.error("Wipe all data and restart?")
+        if st.button("Confirm Reset"):
+            st.session_state.clear()
+            st.rerun()
+        if st.button("Cancel"):
+            st.session_state.confirm_reset = False
+            st.rerun()
