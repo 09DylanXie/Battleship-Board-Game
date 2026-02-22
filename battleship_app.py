@@ -3,41 +3,41 @@ import random
 import uuid
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="Battleship Command v13", layout="wide", page_icon="⚓")
+st.set_page_config(page_title="Battleship Command v17", layout="wide", page_icon="⚓")
 
 # --- RULES & CONSTANTS ---
 STARTING_GOLD = 150
 STARTING_STEEL = 10
+STARTING_GEMS = 0
 BASE_GOLD_INCOME = 20
 BASE_STEEL_INCOME = 2
 FLEET_CAP_ACTIVE = 7
 FLEET_CAP_RESERVE = 3
 BASE_MAX_HP = 30 
 
-# Unit Stats
+# Unit Stats (Updated Costs, HP, and Damage profiles)
 UNITS = {
-    "Aircraft Carrier": {"gold": 110, "steel": 8, "turns": 3, "hp": 7, "desc": "Range 4, 1x(1-10) or 2x(1-5)"}, 
-    "Battleship":       {"gold": 90,  "steel": 7, "turns": 2, "hp": 13,"desc": "Range 3, Dmg 3-9"}, 
-    "Cruiser":          {"gold": 60,  "steel": 5, "turns": 1, "hp": 8, "desc": "Range 2, Dmg 2-5"}, 
-    "Destroyer":        {"gold": 40,  "steel": 4, "turns": 0, "hp": 5, "desc": "Range 2, Dmg 1-3 + Torp(5)"}, 
-    "Submarine":        {"gold": 30,  "steel": 2, "turns": 0, "hp": 3, "desc": "Torpedo (7 dmg), Hidden"}, 
+    "Aircraft Carrier": {"gold": 110, "steel": 8, "turns": 3, "hp": 7,  "limit": 2, "desc": "Range 4, 1x(3-10) or 2x(1-5)"}, 
+    "Battleship":       {"gold": 90,  "steel": 7, "turns": 2, "hp": 13, "limit": 3, "desc": "Range 3, Dmg 2-7"}, 
+    "Cruiser":          {"gold": 60,  "steel": 5, "turns": 1, "hp": 9,  "limit": 4, "desc": "Range 2, Dmg 2-4"}, 
+    "Destroyer":        {"gold": 40,  "steel": 4, "turns": 0, "hp": 5,  "limit": 5, "desc": "Range 2, Dmg 1-3, Torp(5), Mine Gems"}, 
+    "Submarine":        {"gold": 30,  "steel": 2, "turns": 0, "hp": 3,  "limit": 2, "desc": "Torpedo (7 dmg), Hidden"}, 
 }
 
-# Detailed Building Stats 
 BUILDINGS = {
     "Gold Mine": {
-        "gold": 20, "steel": 0, "limit": 4, 
+        "gold": 20, "steel": 2, "limit": 4, 
         "effect": "+10 Gold/turn", 
         "desc": "Deep earth mining infrastructure to fund the war effort."
     },
     "Steel Factory": {
-        "gold": 40, "steel": 0, "limit": 2, 
+        "gold": 40, "steel": 1, "limit": 2, 
         "effect": "+1 Steel/turn", 
         "desc": "Heavy industrial processing for ship armor and hulls."
     },
     "Base Defense": {
         "gold": 50, "steel": 0, "limit": 2, 
-        "effect": "+1 Bomber (1-3 Dmg)", 
+        "effect": "+1 Bomber (2-4 Dmg)", 
         "desc": "Scramble interceptors to defend the homeland."
     },
     "Shipyard": {
@@ -48,16 +48,12 @@ BUILDINGS = {
 }
 
 # --- INITIALIZATION ---
-if 'gold' not in st.session_state:
-    st.session_state.gold = STARTING_GOLD
-if 'steel' not in st.session_state:
-    st.session_state.steel = STARTING_STEEL
-if 'turn' not in st.session_state:
-    st.session_state.turn = 1
-if 'base_hp' not in st.session_state:
-    st.session_state.base_hp = BASE_MAX_HP
-if 'queue' not in st.session_state:
-    st.session_state.queue = [] 
+if 'gold' not in st.session_state: st.session_state.gold = STARTING_GOLD
+if 'steel' not in st.session_state: st.session_state.steel = STARTING_STEEL
+if 'gems' not in st.session_state: st.session_state.gems = STARTING_GEMS
+if 'turn' not in st.session_state: st.session_state.turn = 1
+if 'base_hp' not in st.session_state: st.session_state.base_hp = BASE_MAX_HP
+if 'queue' not in st.session_state: st.session_state.queue = [] 
 if 'buildings' not in st.session_state:
     st.session_state.buildings = {"Gold Mine": 0, "Steel Factory": 0, "Shipyard": 0, "Base Defense": 0}
 if 'logs' not in st.session_state:
@@ -65,43 +61,51 @@ if 'logs' not in st.session_state:
 if 'roll_results' not in st.session_state:
     st.session_state.roll_results = {}
 
-# --- NEW: Ship Counter System ---
-if 'ship_counters' not in st.session_state:
-    st.session_state.ship_counters = {k: 0 for k in UNITS.keys()}
+# --- DYNAMIC NUMBERING HELPER ---
+def get_next_ship_number(fleet_list, u_type, limit):
+    used = [s['num'] for s in fleet_list if s['type'] == u_type]
+    for i in range(1, limit + 1):
+        if i not in used:
+            return i
+    return limit + 1
 
-# Helper to create ship object with designated numbers
-def create_ship(u_type, status="Active"):
-    st.session_state.ship_counters[u_type] += 1
-    designation = f"{u_type} {st.session_state.ship_counters[u_type]}"
-    
+def create_player_ship(u_type, status="Active"):
+    num = get_next_ship_number(st.session_state.fleet_list, u_type, UNITS[u_type]["limit"])
     return {
         "id": str(uuid.uuid4()), 
         "type": u_type, 
-        "name": designation, # Display name (e.g., "Destroyer 1")
+        "num": num,
+        "name": f"{u_type} {num}",
         "status": status,
         "hp": UNITS[u_type]["hp"],
-        "max_hp": UNITS[u_type]["hp"]
+        "max_hp": UNITS[u_type]["hp"],
+        "mined_this_turn": False
     }
 
 if 'fleet_list' not in st.session_state:
-    st.session_state.fleet_list = [
-        create_ship("Destroyer", "Active"), # Will become Destroyer 1
-        create_ship("Destroyer", "Active")  # Will become Destroyer 2
-    ]
+    st.session_state.fleet_list = []
+    # Start with 1 Destroyer only
+    st.session_state.fleet_list.append(create_player_ship("Destroyer", "Active"))
+
+# Enemy State Initialization
+if 'enemies' not in st.session_state:
+    st.session_state.enemies = {
+        "Enemy 1": {"base_hp": 30, "ships": []},
+        "Enemy 2": {"base_hp": 30, "ships": []},
+        "Enemy 3": {"base_hp": 30, "ships": []}
+    }
 
 # --- FUNCTIONS ---
 def log(msg):
     st.session_state.logs.insert(0, f"Turn {st.session_state.turn}: {msg}")
 
 def end_turn():
-    # 1. Income
     gold_gain = BASE_GOLD_INCOME + (st.session_state.buildings["Gold Mine"] * 10)
     steel_gain = BASE_STEEL_INCOME + (st.session_state.buildings["Steel Factory"] * 1)
     
     st.session_state.gold += gold_gain
     st.session_state.steel += steel_gain
     
-    # 2. Queue
     completed = []
     new_queue = []
     for item in st.session_state.queue:
@@ -110,11 +114,15 @@ def end_turn():
             completed.append(item['type'])
             active_count = sum(1 for s in st.session_state.fleet_list if s['status'] == "Active")
             status = "Active" if active_count < FLEET_CAP_ACTIVE else "Reserve"
-            st.session_state.fleet_list.append(create_ship(item['type'], status))
+            st.session_state.fleet_list.append(create_player_ship(item['type'], status))
         else:
             new_queue.append(item)
     
     st.session_state.queue = new_queue
+    
+    # Reset Destroyer mining status
+    for ship in st.session_state.fleet_list:
+        ship['mined_this_turn'] = False
     
     log(f"Collected +{gold_gain} Gold, +{steel_gain} Steel.")
     if completed:
@@ -147,14 +155,15 @@ def toggle_ship_status(ship_id):
             st.error("Active Fleet Full!")
 
 # --- MAIN UI ---
-st.title("⚓ Battleship Command v13")
+st.title("⚓ Battleship Command v17")
 
 # Dashboard
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4, col5 = st.columns(5)
 col1.metric("Gold", st.session_state.gold)
 col2.metric("Steel", st.session_state.steel)
-col3.metric("Turn", st.session_state.turn)
-with col4:
+col3.metric("Gems", st.session_state.gems)
+col4.metric("Turn", st.session_state.turn)
+with col5:
     if st.button("End Turn ➡️", type="primary", use_container_width=True):
         end_turn()
         st.rerun()
@@ -162,19 +171,40 @@ with col4:
 st.divider()
 
 # Tabs
-tab_combat, tab_health, tab_ships, tab_infra = st.tabs(["⚔️ Combat", "🏥 Damage Control", "⚓ Fleet", "🏗️ Infrastructure"])
+tab_combat, tab_health, tab_ships, tab_enemy, tab_shop, tab_infra = st.tabs([
+    "⚔️ Combat", "🏥 Damage Control", "⚓ Fleet", "🔴 Enemy", "💎 Shop", "🏗️ Infrastructure"
+])
 
 # --- TAB 1: COMBAT ---
 with tab_combat:
+    # --- MOUNTAIN MINING ---
+    st.markdown("### ⛰️ Mountain Operations")
+    
+    available_miners = [s for s in st.session_state.fleet_list if s['type'] == 'Destroyer' and s['status'] == 'Active' and not s.get('mined_this_turn', False)]
+    
+    m_col1, m_col2 = st.columns([1, 2])
+    with m_col1:
+        st.write(f"**Available Destroyers to Mine:** {len(available_miners)}")
+        if st.button("⛏️ Mine Mountain (Uses 1 Destroyer)", disabled=len(available_miners) == 0):
+            available_miners[0]['mined_this_turn'] = True
+            st.session_state.gems += 1
+            log(f"{available_miners[0]['name']} extracted 1 Gem from the mountains.")
+            st.toast("Mined 1 Gem!")
+            st.rerun()
+    with m_col2:
+        st.caption("Destroyers can mine 1 Gem per turn when adjacent to a mountain tile.")
+
+    st.divider()
+
     # --- AIRCRAFT CARRIER ---
     st.markdown("### ✈️ Aircraft Carrier")
-    c_mode = st.radio("Carrier Mode", ["Focused (1-10 Dmg)", "Split (2x 1-5 Dmg)"], horizontal=True)
+    c_mode = st.radio("Carrier Mode", ["Focused (3-10 Dmg)", "Split (2x 1-5 Dmg)"], horizontal=True)
     c_col1, c_col2 = st.columns(2)
     
     if "Focused" in c_mode:
         with c_col1:
             if st.button("Launch Strike"):
-                dmg = random.randint(1, 10)
+                dmg = random.randint(3, 10)
                 st.session_state.roll_results['carrier'] = f"🎯 Carrier Hit: **{dmg}**"
                 log(f"Carrier Focused: {dmg}")
     else:
@@ -203,32 +233,32 @@ with tab_combat:
     if bombers == 0:
         st.caption("No bombers active. Buy upgrades.")
     elif bombers == 1:
-        if st.button("Launch Scramble (1-3 Dmg)"):
-            dmg = random.randint(1, 3)
+        if st.button("Launch Scramble (2-4 Dmg)"):
+            dmg = random.randint(2, 4)
             st.session_state.roll_results['base'] = f"🛡️ Intercept: **{dmg}**"
             log(f"Base Defense: {dmg}")
         if 'base' in st.session_state.roll_results: st.info(st.session_state.roll_results['base'])
     else: 
-        b_mode = st.radio("Defense Mode", ["Focused (2-6 Dmg)", "Split (2x 1-3 Dmg)"], horizontal=True)
+        b_mode = st.radio("Defense Mode", ["Focused (2x combined)", "Split (2x 2-4 Dmg)"], horizontal=True)
         bd1, bd2 = st.columns(2)
         
         if "Focused" in b_mode:
             with bd1:
                 if st.button("Combined Sortie"):
-                    dmg = random.randint(2, 6)
+                    dmg = random.randint(2, 4) + random.randint(2, 4)
                     st.session_state.roll_results['base_focus'] = f"🛡️ Combined Hit: **{dmg}**"
                     log(f"Base Focused: {dmg}")
             if 'base_focus' in st.session_state.roll_results: st.info(st.session_state.roll_results['base_focus'])
         else:
             with bd1:
                 if st.button("Bomber 1"):
-                    dmg = random.randint(1, 3)
+                    dmg = random.randint(2, 4)
                     st.session_state.roll_results['base_1'] = f"🛡️ B1: **{dmg}**"
                     log(f"Base B1: {dmg}")
                 if 'base_1' in st.session_state.roll_results: st.caption(st.session_state.roll_results['base_1'])
             with bd2:
                 if st.button("Bomber 2"):
-                    dmg = random.randint(1, 3)
+                    dmg = random.randint(2, 4)
                     st.session_state.roll_results['base_2'] = f"🛡️ B2: **{dmg}**"
                     log(f"Base B2: {dmg}")
                 if 'base_2' in st.session_state.roll_results: st.caption(st.session_state.roll_results['base_2'])
@@ -240,12 +270,12 @@ with tab_combat:
     col_surf1, col_surf2, col_surf3 = st.columns(3)
     with col_surf1:
         if st.button("🔥 Battleship"):
-            dmg = random.randint(3, 9)
+            dmg = random.randint(2, 7)
             st.session_state.roll_results['bb'] = f"💥 **{dmg}**"
             log(f"Battleship Fired: {dmg}")
     with col_surf2:
         if st.button("🔫 Cruiser"):
-            dmg = random.randint(2, 5)
+            dmg = random.randint(2, 4)
             st.session_state.roll_results['cr'] = f"🔫 **{dmg}**"
             log(f"Cruiser Fired: {dmg}")
     with col_surf3:
@@ -254,9 +284,9 @@ with tab_combat:
             st.session_state.roll_results['dd'] = f"🔫 **{dmg}**"
             log(f"Destroyer Fired: {dmg}")
             
-    if 'bb' in st.session_state.roll_results: st.caption(f"BB: {st.session_state.roll_results['bb']}")
-    if 'cr' in st.session_state.roll_results: st.caption(f"CA: {st.session_state.roll_results['cr']}")
-    if 'dd' in st.session_state.roll_results: st.caption(f"DD: {st.session_state.roll_results['dd']}")
+    if 'bb' in st.session_state.roll_results: st.caption(f"BB (2-7): {st.session_state.roll_results['bb']}")
+    if 'cr' in st.session_state.roll_results: st.caption(f"CA (2-4): {st.session_state.roll_results['cr']}")
+    if 'dd' in st.session_state.roll_results: st.caption(f"DD (1-3): {st.session_state.roll_results['dd']}")
 
     st.divider()
     st.markdown("### Torpedoes")
@@ -275,14 +305,12 @@ with tab_combat:
 with tab_health:
     st.subheader("🏥 Damage Control Center")
     
-    # BASE HEALTH
     bh_col1, bh_col2 = st.columns([1, 3])
     with bh_col1:
         st.metric("Base HP", f"{st.session_state.base_hp} / {BASE_MAX_HP}")
     with bh_col2:
-        st.write("") # Spacer
+        st.write("") 
         st.progress(st.session_state.base_hp / BASE_MAX_HP)
-        
         hb1, hb2, hb3 = st.columns(3)
         if hb1.button("➖ Hit (-1)", key="b_minus"): 
             st.session_state.base_hp = max(0, st.session_state.base_hp - 1)
@@ -296,7 +324,6 @@ with tab_health:
 
     st.divider()
     
-    # FLEET HEALTH
     st.markdown("#### Fleet Status")
     active_ships = [s for s in st.session_state.fleet_list if s['status'] == "Active"]
     
@@ -306,23 +333,17 @@ with tab_health:
         for ship in active_ships:
             with st.container(border=True):
                 hc1, hc2, hc3 = st.columns([2, 3, 2])
-                
-                # Info
                 with hc1:
-                    st.markdown(f"**{ship['name']}**") # Display Name with Number
-                    if ship['hp'] <= 0:
-                        st.error("DESTROYED")
-                    elif ship['hp'] <= ship['max_hp'] * 0.3:
-                        st.warning("CRITICAL")
-                    else:
-                        st.success("OPERATIONAL")
-                
-                # Bar
+                    st.markdown(f"**{ship['name']}**")
+                    # Added description under the name
+                    st.caption(UNITS[ship['type']]['desc'])
+                    
+                    if ship['hp'] <= 0: st.error("DESTROYED")
+                    elif ship['hp'] <= ship['max_hp'] * 0.3: st.warning("CRITICAL")
+                    else: st.success("OPERATIONAL")
                 with hc2:
                     pct = max(0.0, ship['hp'] / ship['max_hp'])
                     st.progress(pct, text=f"{ship['hp']} / {ship['max_hp']} HP")
-                
-                # Controls 
                 with hc3:
                     sub1, sub2, sub3, sub4 = st.columns(4)
                     if sub1.button("-1", key=f"dmg_{ship['id']}"):
@@ -352,7 +373,7 @@ with tab_ships:
         for ship in active_s:
             with st.container(border=True):
                 c1, c2, c3 = st.columns([2, 1, 1])
-                c1.markdown(f"**{ship['name']}** (HP: {ship['hp']})") # Display Name with Number
+                c1.markdown(f"**{ship['name']}** (HP: {ship['hp']})")
                 if c2.button("Recall", key=f"r_{ship['id']}"):
                     toggle_ship_status(ship['id'])
                     st.rerun()
@@ -364,7 +385,7 @@ with tab_ships:
         for ship in reserve_s:
             with st.container(border=True):
                 c1, c2, c3 = st.columns([2, 1, 1])
-                c1.markdown(f"**{ship['name']}** (HP: {ship['hp']})") # Display Name with Number
+                c1.markdown(f"**{ship['name']}** (HP: {ship['hp']})")
                 if c2.button("Deploy", key=f"d_{ship['id']}"):
                     toggle_ship_status(ship['id'])
                     st.rerun()
@@ -374,61 +395,182 @@ with tab_ships:
 
     with col_yard:
         st.subheader("Shipyard")
-        u = st.selectbox("Build", list(UNITS.keys()))
+        u = st.selectbox("Build Blueprint", list(UNITS.keys()))
         s = UNITS[u]
-        st.caption(f"Cost: {s['gold']}G {s['steel']}S | {s['turns']} Turns")
         
-        if st.button(f"Commission {u}", type="primary"):
-            if st.session_state.gold >= s['gold'] and st.session_state.steel >= s['steel']:
+        curr_built = len([ship for ship in st.session_state.fleet_list if ship['type'] == u])
+        curr_queued = len([q for q in st.session_state.queue if q['type'] == u])
+        total_u = curr_built + curr_queued
+        limit_u = s['limit']
+        
+        st.caption(f"Cost: {s['gold']}G {s['steel']}S | {s['turns']} Turns")
+        st.write(f"**Owned/Queued:** {total_u} / {limit_u}")
+        
+        # --- GEM RUSHING LOGIC ---
+        rush_turns = 0
+        if s['turns'] > 0:
+            max_possible_rush = min(st.session_state.gems // 2, s['turns'])
+            rush_turns = st.number_input(
+                "Rush Construction (2 Gems per Turn)", 
+                min_value=0, 
+                max_value=int(max_possible_rush), 
+                value=0
+            )
+            if rush_turns > 0:
+                st.info(f"Rushing {rush_turns} turns for **{rush_turns * 2} Gems**.")
+        
+        can_afford_g = st.session_state.gold >= s['gold']
+        can_afford_s = st.session_state.steel >= s['steel']
+        can_afford_gems = st.session_state.gems >= (rush_turns * 2)
+        is_maxed = total_u >= limit_u
+        
+        if st.button(f"Commission {u}", type="primary", disabled=is_maxed):
+            if can_afford_g and can_afford_s and can_afford_gems:
                 st.session_state.gold -= s['gold']
                 st.session_state.steel -= s['steel']
-                if s['turns'] == 0:
-                    st.session_state.fleet_list.append(create_ship(u, "Active"))
+                st.session_state.gems -= (rush_turns * 2)
+                
+                final_turns = s['turns'] - rush_turns
+                
+                if final_turns == 0:
+                    st.session_state.fleet_list.append(create_player_ship(u, "Active"))
+                    log(f"Rushed construction of {u} instantly!")
                 else:
-                    st.session_state.queue.append({'type': u, 'turns_left': s['turns']})
+                    st.session_state.queue.append({'type': u, 'turns_left': final_turns})
+                    log(f"Started construction of {u} ({final_turns} turns remaining).")
                 st.rerun()
             else:
-                st.error("Funds?")
+                st.error("Insufficient Funds or Gems!")
         
         if st.session_state.queue:
             st.divider()
             for q in st.session_state.queue:
                 st.write(f"🏗️ {q['type']}: {q['turns_left']} turns")
 
-# --- TAB 4: INFRASTRUCTURE ---
+
+# --- TAB 4: ENEMY TRACKER ---
+with tab_enemy:
+    st.subheader("🔴 Enemy Intelligence")
+    e_tabs = st.tabs(["Enemy 1", "Enemy 2", "Enemy 3"])
+    
+    for i, e_name in enumerate(["Enemy 1", "Enemy 2", "Enemy 3"]):
+        with e_tabs[i]:
+            enemy_data = st.session_state.enemies[e_name]
+            
+            st.markdown(f"#### {e_name} Base HP: {enemy_data['base_hp']} / {BASE_MAX_HP}")
+            e_bh1, e_bh2 = st.columns([3, 1])
+            with e_bh1:
+                st.progress(enemy_data['base_hp'] / BASE_MAX_HP)
+            with e_bh2:
+                eh1, eh2 = st.columns(2)
+                if eh1.button("-1", key=f"e_bm_{e_name}"):
+                    enemy_data['base_hp'] = max(0, enemy_data['base_hp'] - 1)
+                    st.rerun()
+                if eh2.button("+1", key=f"e_bp_{e_name}"):
+                    enemy_data['base_hp'] = min(BASE_MAX_HP, enemy_data['base_hp'] + 1)
+                    st.rerun()
+            
+            st.divider()
+            
+            st.markdown("#### Add Spotted Ship")
+            esp1, esp2 = st.columns([2, 1])
+            with esp1:
+                e_unit = st.selectbox("Ship Type", list(UNITS.keys()), key=f"sel_{e_name}", label_visibility="collapsed")
+            with esp2:
+                e_limit = UNITS[e_unit]['limit']
+                curr_e_ships = len([s for s in enemy_data['ships'] if s['type'] == e_unit])
+                
+                if st.button("Spawn", key=f"spawn_{e_name}", disabled=(curr_e_ships >= e_limit)):
+                    num = get_next_ship_number(enemy_data['ships'], e_unit, e_limit)
+                    enemy_data['ships'].append({
+                        "id": str(uuid.uuid4()),
+                        "type": e_unit,
+                        "num": num,
+                        "name": f"{e_unit} {num}",
+                        "hp": UNITS[e_unit]['hp'],
+                        "max_hp": UNITS[e_unit]['hp']
+                    })
+                    st.rerun()
+            
+            if not enemy_data['ships']:
+                st.caption("No ships tracked for this enemy.")
+            else:
+                for ship in enemy_data['ships']:
+                    with st.container(border=True):
+                        ec1, ec2, ec3 = st.columns([2, 3, 2])
+                        with ec1:
+                            st.markdown(f"**{ship['name']}**")
+                            st.caption(UNITS[ship['type']]['desc'])
+                        with ec2:
+                            pct = max(0.0, ship['hp'] / ship['max_hp'])
+                            st.progress(pct, text=f"{ship['hp']} / {ship['max_hp']} HP")
+                        with ec3:
+                            es1, es2, es3 = st.columns(3)
+                            if es1.button("-1", key=f"e_dmg_{ship['id']}"):
+                                ship['hp'] = max(0, ship['hp'] - 1)
+                                st.rerun()
+                            if es2.button("+1", key=f"e_rep_{ship['id']}"):
+                                ship['hp'] = min(ship['max_hp'], ship['hp'] + 1)
+                                st.rerun()
+                            if es3.button("☠️", key=f"e_kill_{ship['id']}"):
+                                enemy_data['ships'] = [s for s in enemy_data['ships'] if s['id'] != ship['id']]
+                                st.rerun()
+
+
+# --- TAB 5: SHOP ---
+with tab_shop:
+    st.subheader("💎 Black Market Gem Exchange")
+    st.caption("Trade rare mountain gems to off-the-grid smugglers for resources.")
+    
+    st.metric("Current Gems", st.session_state.gems)
+    
+    s1, s2 = st.columns(2)
+    with s1:
+        with st.container(border=True):
+            st.markdown("#### 💰 Buy Gold")
+            st.write("**Cost:** 1 Gem")
+            st.write("**Receive:** 30 Gold")
+            if st.button("Trade for Gold", use_container_width=True, disabled=st.session_state.gems < 1):
+                st.session_state.gems -= 1
+                st.session_state.gold += 30
+                log("Traded 1 Gem for 30 Gold.")
+                st.rerun()
+                
+    with s2:
+        with st.container(border=True):
+            st.markdown("#### 🏗️ Buy Steel")
+            st.write("**Cost:** 1 Gem")
+            st.write("**Receive:** 3 Steel")
+            if st.button("Trade for Steel", use_container_width=True, disabled=st.session_state.gems < 1):
+                st.session_state.gems -= 1
+                st.session_state.steel += 3
+                log("Traded 1 Gem for 3 Steel.")
+                st.rerun()
+
+
+# --- TAB 6: INFRASTRUCTURE ---
 with tab_infra:
     st.subheader("Resource Management")
     
-    # Display buildings in rows with details
     for b_name, b_data in BUILDINGS.items():
-        # Get current count
         curr = st.session_state.buildings.get(b_name, 0)
         limit = b_data['limit']
         
         with st.container(border=True):
             ic1, ic2, ic3 = st.columns([2, 2, 1])
-            
             with ic1:
                 st.markdown(f"#### {b_name}")
                 st.caption(b_data['desc'])
-            
             with ic2:
                 st.write(f"**Effect:** {b_data['effect']}")
-                
-                # FORMATTED COST STRING FOR STEEL
                 cost_str = f"{b_data['gold']}G"
-                if b_data['steel'] > 0:
-                    cost_str += f" | {b_data['steel']}S"
+                if b_data['steel'] > 0: cost_str += f" | {b_data['steel']}S"
                 st.write(f"**Cost:** {cost_str}")
-                
                 st.write(f"**Owned:** {curr} / {limit}")
-                
             with ic3:
-                # Disable button if maxed or poor
                 can_afford_g = st.session_state.gold >= b_data['gold']
                 can_afford_s = st.session_state.steel >= b_data['steel']
                 not_maxed = curr < limit
-                
                 if st.button(f"Buy", key=f"buy_{b_name}", disabled=not (can_afford_g and can_afford_s and not_maxed)):
                     st.session_state.gold -= b_data['gold']
                     st.session_state.steel -= b_data['steel']
