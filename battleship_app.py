@@ -3,7 +3,7 @@ import random
 import uuid
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="Battleship Command v20", layout="wide", page_icon="⚓")
+st.set_page_config(page_title="Battleship Command v21", layout="wide", page_icon="⚓")
 
 # --- RULES & CONSTANTS ---
 STARTING_GOLD = 150
@@ -15,30 +15,30 @@ FLEET_CAP_ACTIVE = 7
 FLEET_CAP_RESERVE = 3
 BASE_MAX_HP = 30 
 
-# Unit Stats (Added 'bonus' field for special abilities)
+# Unit Stats (Updated Costs to v21)
 UNITS = {
     "Aircraft Carrier": {
-        "gold": 110, "steel": 8, "turns": 3, "hp": 7, "limit": 2, 
+        "gold": 100, "steel": 10, "turns": 3, "hp": 7, "limit": 2, 
         "desc": "Range 4, 1x(3-10) or 2x(1-5)", 
         "bonus": "Cannot Move and Attack on the same turn"
     }, 
     "Battleship": {
-        "gold": 90,  "steel": 7, "turns": 2, "hp": 13, "limit": 3, 
+        "gold": 90,  "steel": 9, "turns": 2, "hp": 13, "limit": 3, 
         "desc": "Range 3, Dmg 2-7", 
         "bonus": "Damage Reduction: Torpedoes (3) and Aircraft (1)"
     }, 
     "Cruiser": {
-        "gold": 60,  "steel": 5, "turns": 1, "hp": 9,  "limit": 4, 
+        "gold": 50,  "steel": 5, "turns": 1, "hp": 9,  "limit": 4, 
         "desc": "Range 2, Dmg 2-4", 
         "bonus": "Damage Reduction: Submarines (5)"
     }, 
     "Destroyer": {
-        "gold": 40,  "steel": 4, "turns": 0, "hp": 5,  "limit": 5, 
+        "gold": 30,  "steel": 3, "turns": 0, "hp": 5,  "limit": 5, 
         "desc": "Range 2, Dmg 1-3, Torp(5), Mine Gems", 
         "bonus": "Damage Reduction: Aircraft (2)"
     }, 
     "Submarine": {
-        "gold": 30,  "steel": 2, "turns": 0, "hp": 3,  "limit": 2, 
+        "gold": 40,  "steel": 2, "turns": 0, "hp": 3,  "limit": 2, 
         "desc": "Torpedo (7 dmg), Hidden", 
         "bonus": "Immune to Battleships. Cannot attack bases. Invisible until 1 tile away."
     }, 
@@ -49,6 +49,7 @@ UNITS = {
     }, 
 }
 
+# Detailed Building Stats (Updated Costs to v21)
 BUILDINGS = {
     "Gold Mine": {
         "gold": 20, "steel": 2, "limit": 4, 
@@ -56,17 +57,17 @@ BUILDINGS = {
         "desc": "Deep earth mining infrastructure to fund the war effort."
     },
     "Steel Factory": {
-        "gold": 40, "steel": 1, "limit": 3, 
+        "gold": 30, "steel": 1, "limit": 3, 
         "effect": "+1 Steel/turn", 
         "desc": "Heavy industrial processing for ship armor and hulls."
     },
     "Base Defense": {
-        "gold": 50, "steel": 0, "limit": 2, 
+        "gold": 30, "steel": 0, "limit": 2, 
         "effect": "+1 Bomber (2-4 Dmg)", 
         "desc": "Scramble interceptors to defend the homeland."
     },
     "Shipyard": {
-        "gold": 80, "steel": 3, "limit": 1, 
+        "gold": 50, "steel": 3, "limit": 1, 
         "effect": "Unlocks Repairs", 
         "desc": "Allows repairing ships (3HP) within 1 tile of base."
     }
@@ -181,7 +182,7 @@ def toggle_ship_status(ship_id):
             st.error("Active Fleet Full!")
 
 # --- MAIN UI ---
-st.title("⚓ Battleship Command v20")
+st.title("⚓ Battleship Command v21")
 
 # Dashboard
 col1, col2, col3, col4, col5 = st.columns(5)
@@ -367,7 +368,6 @@ with tab_health:
                 with hc1:
                     st.markdown(f"**{ship['name']}**")
                     st.caption(UNITS[ship['type']]['desc'])
-                    # --- ADDED BONUS DESCRIPTION ---
                     st.markdown(f"*{UNITS[ship['type']]['bonus']}*") 
                     
                     if ship['hp'] <= 0: st.error("DESTROYED")
@@ -534,7 +534,6 @@ with tab_enemy:
                         with ec1:
                             st.markdown(f"**{ship['name']}**")
                             st.caption(UNITS[ship['type']]['desc'])
-                            # --- ADDED BONUS DESCRIPTION FOR ENEMIES TOO ---
                             st.markdown(f"*{UNITS[ship['type']]['bonus']}*") 
                         with ec2:
                             pct = max(0.0, ship['hp'] / ship['max_hp'])
