@@ -4,7 +4,7 @@ import uuid
 import copy
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="Battleship Command v22", layout="wide", page_icon="⚓")
+st.set_page_config(page_title="Battleship Command v24", layout="wide", page_icon="⚓")
 
 # --- RULES & CONSTANTS ---
 STARTING_GOLD = 150
@@ -16,7 +16,7 @@ FLEET_CAP_ACTIVE = 7
 FLEET_CAP_RESERVE = 3
 BASE_MAX_HP = 30 
 
-# Unit Stats
+# Unit Stats 
 UNITS = {
     "Aircraft Carrier": {
         "gold": 100, "steel": 10, "turns": 3, "hp": 7, "limit": 2, 
@@ -35,8 +35,13 @@ UNITS = {
     }, 
     "Destroyer": {
         "gold": 30,  "steel": 3, "turns": 0, "hp": 5,  "limit": 5, 
-        "desc": "Range 2, Dmg 1-3, Torp(5), Mine Gems", 
-        "bonus": "Damage Reduction: Aircraft (2)"
+        "desc": "Range 2, Dmg 1-3, Mine Gems", 
+        "bonus": "Damage Reduction: Aircraft (2). Deals 2x Dmg vs Subs & Torpedo Boats."
+    }, 
+    "Torpedo Boat": {
+        "gold": 40,  "steel": 2, "turns": 0, "hp": 3,  "limit": 2, # Updated limit to 2
+        "desc": "Range 1, Torpedo (2-7 dmg)", 
+        "bonus": "Vulnerable to Destroyers (Takes 2x Dmg from them)."
     }, 
     "Submarine": {
         "gold": 40,  "steel": 2, "turns": 0, "hp": 3,  "limit": 2, 
@@ -91,7 +96,6 @@ if 'history' not in st.session_state:
 
 # --- UNDO SYSTEM HELPER ---
 def save_state():
-    """Saves a snapshot of the current state before an action is taken."""
     snapshot = {
         'gold': st.session_state.gold,
         'steel': st.session_state.steel,
@@ -104,11 +108,10 @@ def save_state():
         'enemies': copy.deepcopy(st.session_state.enemies)
     }
     st.session_state.history.append(snapshot)
-    if len(st.session_state.history) > 15:  # Keep max 15 previous states
+    if len(st.session_state.history) > 15:  
         st.session_state.history.pop(0)
 
 def undo():
-    """Restores the last saved state snapshot."""
     if len(st.session_state.history) > 0:
         last_state = st.session_state.history.pop()
         st.session_state.gold = last_state['gold']
@@ -123,7 +126,6 @@ def undo():
         st.toast("↩️ Action Undone!")
     else:
         st.toast("❌ Nothing to undo!")
-
 
 # --- DYNAMIC NUMBERING HELPER ---
 def get_next_ship_number(fleet_list, u_type, limit):
@@ -223,7 +225,7 @@ def toggle_ship_status(ship_id):
             st.error("Active Fleet Full!")
 
 # --- MAIN UI ---
-st.title("⚓ Battleship Command v22")
+st.title("⚓ Battleship Command v24")
 
 # Dashboard
 col1, col2, col3, col4, col5 = st.columns(5)
@@ -248,9 +250,9 @@ with col5:
 
 st.divider()
 
-# Tabs
-tab_combat, tab_health, tab_ships, tab_enemy, tab_shop, tab_infra = st.tabs([
-    "⚔️ Combat", "🏥 Damage Control", "⚓ Fleet", "🔴 Enemy", "💎 Shop", "🏗️ Infrastructure"
+# Tabs (Added Rules Tab)
+tab_combat, tab_health, tab_ships, tab_enemy, tab_shop, tab_infra, tab_rules = st.tabs([
+    "⚔️ Combat", "🏥 Damage Control", "⚓ Fleet", "🔴 Enemy", "💎 Shop", "🏗️ Infrastructure", "📜 Rules"
 ])
 
 # --- TAB 1: COMBAT ---
@@ -355,8 +357,8 @@ with tab_combat:
     with col_surf3:
         if st.button("🔫 Destroyer"):
             dmg = random.randint(1, 3)
-            st.session_state.roll_results['dd'] = f"🔫 **{dmg}**"
-            log(f"Destroyer Fired: {dmg}")
+            st.session_state.roll_results['dd'] = f"🔫 **{dmg}** (2x: **{dmg * 2}** vs Sub/TB)"
+            log(f"Destroyer Fired: {dmg} (or {dmg * 2} vs Sub/Torp Boat)")
             
     if 'bb' in st.session_state.roll_results: st.caption(f"BB (2-7): {st.session_state.roll_results['bb']}")
     if 'cr' in st.session_state.roll_results: st.caption(f"CA (2-4): {st.session_state.roll_results['cr']}")
@@ -366,13 +368,17 @@ with tab_combat:
     st.markdown("### Torpedoes")
     t1, t2 = st.columns(2)
     with t1: 
-        if st.button("🚀 Dest. Torp (5)"): 
-            st.toast("5 Damage")
-            log("Destroyer Torpedo Fired (5 Dmg)")
+        if st.button("🚤 Torp Boat (2-7)"): 
+            dmg = random.randint(2, 7)
+            st.session_state.roll_results['tb_torp'] = f"💥 **{dmg}** Damage"
+            log(f"Torpedo Boat Fired: {dmg} Dmg")
     with t2:
         if st.button("🌊 Sub Torp (7)"): 
-            st.toast("7 Damage")
+            st.session_state.roll_results['sub_torp'] = f"💥 **7** Damage"
             log("Submarine Torpedo Fired (7 Dmg)")
+
+    if 'tb_torp' in st.session_state.roll_results: st.caption(f"TB: {st.session_state.roll_results['tb_torp']}")
+    if 'sub_torp' in st.session_state.roll_results: st.caption(f"Sub: {st.session_state.roll_results['sub_torp']}")
 
 
 # --- TAB 2: HEALTH TRACKER ---
@@ -436,7 +442,6 @@ with tab_health:
                         ship['hp'] = min(ship['max_hp'], ship['hp'] + 1)
                         st.rerun()
                     if sub4.button("☠️", key=f"kill_hp_{ship['id']}", help="Mark as Sunk"):
-                        # delete_ship handles save_state internally
                         delete_ship(ship['id'])
                         st.rerun()
 
@@ -606,7 +611,6 @@ with tab_enemy:
                                 ship['hp'] = min(ship['max_hp'], ship['hp'] + 1)
                                 st.rerun()
                             
-                            # Reward Kill (You sank it)
                             if es3.button("💎☠️", key=f"e_kill_{ship['id']}", help="You sank it! (+1 Gem)"):
                                 save_state()
                                 enemy_data['ships'] = [s for s in enemy_data['ships'] if s['id'] != ship['id']]
@@ -615,7 +619,6 @@ with tab_enemy:
                                 log(f"Sunk enemy {ship['name']}. +1 Gem awarded.")
                                 st.rerun()
                                 
-                            # No Reward Kill (Someone else sank it)
                             if es4.button("🗑️", key=f"e_rem_{ship['id']}", help="Sunk by another player (No reward)"):
                                 save_state()
                                 enemy_data['ships'] = [s for s in enemy_data['ships'] if s['id'] != ship['id']]
@@ -695,6 +698,112 @@ with tab_infra:
     c2.metric("Steel Factories", st.session_state.buildings["Steel Factory"])
     c3.metric("Base Defenses", st.session_state.buildings["Base Defense"])
     c4.metric("Shipyard", "Operational" if st.session_state.buildings["Shipyard"] else "None")
+
+
+# --- TAB 7: RULES ---
+with tab_rules:
+    st.subheader("📜 Official Game Rules")
+    
+    st.markdown("### Goal")
+    st.write("Total Domination, destroy all enemy bases")
+    
+    st.markdown("### Game Setup (2-4 Players)")
+    st.write("- **Starting Resources:** 150 gold, 1 base, 1 destroyer, 10 Steel")
+    st.write("- **Per Turn Resources:** 20 gold, 2 steel")
+    st.write("- **Spotting Range:** 2 tiles")
+    st.write("- **Unit Cap:** 7 Ships at sea, 3 ships in reserve (per player)")
+    
+    st.divider()
+    
+    st.markdown("### Ships")
+    st.markdown("""
+    **→ Aircraft Carrier (AC)**
+    * Range 4 tiles
+    * Health 7 hp
+    * Damage 3-10 and 1-5 on multi target (up to 2 aircraft rolls per attack)
+    * Movement 1 tile
+    * *(Note: Cannot Move and Attack on the same turn)*
+    
+    **→ Battleship (BB)**
+    * Range 3 tiles
+    * Health 13 hp
+    * Damage 2-7
+    * Movement 1 tile
+    * *(Note: Damage Reduction from Torpedoes 3 and Aircraft 1)*
+    
+    **→ Cruiser (CA)**
+    * Range 2 tiles
+    * Health 9 hp
+    * Damage 2-4
+    * Movement 2 tiles
+    * *(Note: Damage Reduction from Submarines 5)*
+    
+    **→ Destroyer (DD)**
+    * Range 2 tiles
+    * Health 5 hp
+    * Damage 1-3
+    * Movement 2 tiles
+    * *(Note: Damage Reduction from Aircraft 2, 2x dmg to submarines and torpedo boats)*
+    
+    **→ Torpedo Boat (TB)**
+    * Range 1 tile
+    * Health 3 hp
+    * Torpedoes 2-7 dmg
+    * Movement 1 tile
+    
+    **→ Submarine (UB)**
+    * Torpedoes (range 1 dmg 7)
+    * Health 3 hp
+    * Movement 1 tile
+    * *(Note: Cannot be destroyed by battleships, Cannot attack bases, Cannot be spotted until 1 tile distance)*       
+    """)
+    
+    st.divider()
+    
+    st.markdown("### Bases")
+    st.write("- **Health:** 30 HP")
+    st.write("- **Strike Aircraft (purchasable):** Range 2 tiles, Damage 2-4 per")
+    
+    st.markdown("#### Costs:")
+    st.markdown("""
+    * **Aircraft Carrier:** 100 gold + 10 Steel + 3 turns
+    * **Battleship:** 90 gold + 9 Steel + 2 turns
+    * **Cruiser:** 50 gold + 5 Steel + 1 turn
+    * **Destroyer:** 30 gold + 3 Steel
+    * **Torpedo Boat:** 40 gold + 2 Steel
+    * **Submarine:** 40 gold + 2 Steel
+    * **Gold Mine:** 20 gold + 2 Steel
+    * **Steel Factory:** 30 gold + 1 Steel
+    * **Shipyard:** 50 gold + 3 Steel
+    * **Base Defenses:** 30 gold
+    * **Decoy:** 20 gold
+    """)
+    
+    st.markdown("#### Upgrades:")
+    st.markdown("""
+    * **Gold Mine:** Produces 10 Gold per Turn
+    * **Steel Factory:** Produces 1 Steel per Turn
+    * **Shipyard:** Can restore 3 hp to ships within 1 tile of base (ships cannot move/fire while being repaired) (Cannot repair base)
+    * **Base Defenses:** Gives base an airforce of +1 bomber per upgrade
+    """)
+    
+    st.divider()
+    
+    st.markdown("### Combat")
+    st.write("- Upon Spotting of Enemy (2 tile distance), roll the damage your shot does. If you destroy an enemy ship, you collect a bonus.")
+    st.write("- Projectiles travel in straight lines only.")
+    st.write("- You cannot attack an unspotted ship.")
+    
+    st.markdown("### Recall")
+    st.write("- To recall a ship, the player must have that ship within one tile of their base.")
+    st.write("- (Recalled ships from the reserve cannot move/attack the same turn they are recalled).")
+    
+    st.divider()
+    
+    st.markdown("### Mountains")
+    st.write("- Shells and torpedoes are blocked, planes can strike over mountain tiles.")
+    st.write("- Destroyers can mine 1 gem per turn (can't enter combat during mining) from an adjacent mountain.")
+    st.write("- A player cannot mine the same mountain twice on the same turn.")
 
 
 # --- SIDEBAR ---
